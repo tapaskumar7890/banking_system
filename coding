@@ -1,0 +1,221 @@
+CREATE DATABASE banking_system;
+
+-- Create customers table
+CREATE TABLE customers (
+    customer_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    balance DECIMAL(10, 2) NOT NULL DEFAULT 0
+);
+
+-- Insert dummy data
+INSERT INTO customers (name, email, balance) VALUES
+('Alice', 'alice@example.com', 500),
+('Bob', 'bob@example.com', 1000),
+('Charlie', 'charlie@example.com', 800),
+('David', 'david@example.com', 1200),
+('Eve', 'eve@example.com', 600);
+
+$servername = "localhost";
+$username = "root";
+$password = ""; // Password if set
+$dbname = "banking_system";
+
+// Create connection
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+// Check connection
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+
+include 'db.php';
+
+$sql = "SELECT * FROM customers";
+$result = $conn->query($sql);
+
+$customers = array();
+if ($result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $customers[] = $row;
+    }
+}
+
+echo json_encode($customers);
+
+$conn->close();
+
+include 'db.php';
+
+$customer_id = $_GET['customer_id'];
+
+$sql = "SELECT * FROM customers WHERE customer_id = $customer_id";
+$result = $conn->query($sql);
+
+if ($result->num_rows > 0) {
+    $customer = $result->fetch_assoc();
+    echo json_encode($customer);
+} else {
+    echo "Customer not found";
+}
+
+$conn->close();
+include 'db.php';
+
+$from_customer_id = $_POST['from_customer_id'];
+$to_customer_id = $_POST['to_customer_id'];
+$amount = $_POST['amount'];
+
+// Get current balances
+$sql_from = "SELECT balance FROM customers WHERE customer_id = $from_customer_id";
+$result_from = $conn->query($sql_from);
+if ($result_from->num_rows > 0) {
+    $row_from = $result_from->fetch_assoc();
+    $from_balance = $row_from['balance'];
+} else {
+    die("Error: From customer not found");
+}
+
+$sql_to = "SELECT balance FROM customers WHERE customer_id = $to_customer_id";
+$result_to = $conn->query($sql_to);
+if ($result_to->num_rows > 0) {
+    $row_to = $result_to->fetch_assoc();
+    $to_balance = $row_to['balance'];
+} else {
+    die("Error: To customer not found");
+}
+
+// Check if from_customer has sufficient balance
+if ($from_balance >= $amount) {
+    // Perform transfer
+    $new_from_balance = $from_balance - $amount;
+    $new_to_balance = $to_balance + $amount;
+
+    // Update balances
+    $sql_update_from = "UPDATE customers SET balance = $new_from_balance WHERE customer_id = $from_customer_id";
+    $sql_update_to = "UPDATE customers SET balance = $new_to_balance WHERE customer_id = $to_customer_id";
+
+    if ($conn->query($sql_update_from) === TRUE && $conn->query($sql_update_to) === TRUE) {
+        // Record the transfer
+        $timestamp = date('Y-m-d H:i:s');
+        $sql_record_transfer = "INSERT INTO transfers (from_customer_id, to_customer_id, amount, timestamp) VALUES ($from_customer_id, $to_customer_id, $amount, '$timestamp')";
+        if ($conn->query($sql_record_transfer) === TRUE) {
+            echo "Transfer successful";
+        } else {
+            echo "Error recording transfer: " . $conn->error;
+        }
+    } else {
+        echo "Error updating balances: " . $conn->error;
+    }
+} else {
+    echo "Insufficient balance";
+}
+
+$conn->close();
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basic Banking System</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+    <h1>Basic Banking System</h1>
+    <div id="customer-list"></div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>
+
+fetch('get_customers.php')
+.then(response => response.json())
+.then(customers => {
+    const customerList = document.getElementById('customer-list');
+    customers.forEach(customer => {
+        const customerElement = document.createElement('div');
+        customerElement.innerHTML = `
+            <p>Name: ${customer.name}</p>
+            <p>Email: ${customer.email}</p>
+            <p>Balance: ${customer.balance}</p>
+            <button onclick="viewCustomerDetails(${customer.customer_id})">View Details</button>
+        `;
+        customerList.appendChild(customerElement);
+    });
+})
+.catch(error => console.error('Error fetching customers:', error));
+
+// Function to view customer details
+function viewCustomerDetails(customer_id) {
+    fetch(`get_customer.php?customer_id=${customer_id}`)
+    .then(response => response.json())
+    .then(customer => {
+        alert(`Customer Details:\nName: ${customer.name}\nEmail: ${customer.email}\nBalance: ${customer.balance}`);
+        const amount = prompt(`Enter amount to transfer from ${customer.name}:`);
+        if (amount !== null && amount !== "") {
+            const to_customer_id = prompt("Enter recipient's customer ID:");
+            if (to_customer_id !== null && to_customer_id !== "") {
+                transferMoney(customer_id, parseInt(to_customer_id), parseFloat(amount));
+            }
+        }
+    })
+    .catch(error => console.error('Error fetching customer details:', error));
+}
+
+// Function to transfer money
+function transferMoney(from_customer_id, to_customer_id, amount) {
+    const data = {
+        from_customer_id: from_customer_id,
+        to_customer_id: to_customer_id,
+        amount: amount
+    };
+
+    fetch('transfer_money.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.text())
+    .then(message => alert(message))
+    .catch(error => console.error('Error transferring money:', error));
+}
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background-color: #fff;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+}
+
+#customer-list {
+    margin-top: 20px;
+}
+
+button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+button:hover {
+    opacity: 0.8;
+}
